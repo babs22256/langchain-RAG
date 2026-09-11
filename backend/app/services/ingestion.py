@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..models.chunk import Chunk
 from ..models.document import KnowledgeDoc
-from . import bm25
+from . import bm25, cache
 from .llm import get_embeddings
 from .vector_store import VectorStoreService
 
@@ -78,5 +78,6 @@ async def ingest_document(db: Session, doc_id: int, filename: str, content: byte
         chunk_indexes=list(range(len(chunks))),
     )
 
-    # 使 BM25 缓存失效
+    # 使 BM25 索引与 LLM 结果缓存失效（新文档可能改变最优答案）
     bm25.invalidate()
+    cache.clear()

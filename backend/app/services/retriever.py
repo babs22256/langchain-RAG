@@ -63,6 +63,13 @@ async def retrieve(db: Session, query: str, top_k: int = RERANK_TOP_K) -> list[d
     if not fused:
         return []
 
+    # 数据库读取到此为止：先取好来源文档名，随即结束只读事务，把连接还给连接池。
+    # 否则 SQLAlchemy 会一直持有这条连接直到调用方下一次 commit —— 而紧随其后的
+    # rerank 以及调用方的 LLM 流式生成长达数十秒，100 并发会直接耗尽连接池。
+    # 前置条件：调用方进入本函数前已完成写入提交（见 routers/chat.py）。
+    doc_names = _doc_name_map(db)
+    db.rollback()
+
     # 重排精排
     documents = [h["text"] for h in fused]
     try:
@@ -74,7 +81,6 @@ async def retrieve(db: Session, query: str, top_k: int = RERANK_TOP_K) -> list[d
             for i in range(min(top_k, len(documents)))
         ]
 
-    doc_names = _doc_name_map(db)
     final: list[dict] = []
     for r in results:
         idx = r["index"]

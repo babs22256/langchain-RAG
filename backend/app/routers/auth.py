@@ -21,6 +21,9 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     exists = db.query(User).filter(User.username == data.username).first()
     if exists:
         raise HTTPException(status_code=400, detail="用户名已存在")
+    # 归还连接：bcrypt 计算约 250ms，不应在这段时间占着连接池
+    db.close()
+
     user = User(
         username=data.username,
         password_hash=hash_password(data.password),
@@ -35,10 +38,19 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenOut)
 def login(data: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == data.username).first()
-    if user is None or not verify_password(data.password, user.password_hash):
+    if user is None:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    token = create_access_token(user.username)
-    return TokenOut(access_token=token, user=UserOut.model_validate(user))
+
+    # 先取出需要的数据，随即归还连接：bcrypt 校验约 250ms，
+    # 高并发登录时正是这段持续持有把连接池拖垮的。
+    user_out = UserOut.model_validate(user)
+    password_hash = user.password_hash
+    db.close()
+
+    if not verify_password(data.password, password_hash):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = create_access_token(user_out.username)
+    return TokenOut(access_token=token, user=user_out)
 
 
 @router.get("/me", response_model=UserOut)

@@ -66,9 +66,10 @@ async def chat(
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     session = _get_or_create_session(db, user.id, data.session_id, question)
-    history = _load_history(db, session.id, HISTORY_LIMIT)
+    session_id = session.id  # 提前取出：检索释放连接后 ORM 对象会过期
+    history = _load_history(db, session_id, HISTORY_LIMIT)
 
-    db.add(Message(session_id=session.id, role="user", content=question))
+    db.add(Message(session_id=session_id, role="user", content=question))
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
@@ -93,7 +94,7 @@ async def chat(
     ]
     db.add(
         Message(
-            session_id=session.id,
+            session_id=session_id,
             role="assistant",
             content=answer,
             citations=json.dumps(
@@ -101,11 +102,13 @@ async def chat(
             ),
         )
     )
-    session.updated_at = datetime.now(timezone.utc)
+    db.query(Conversation).filter(Conversation.id == session_id).update(
+        {"updated_at": datetime.now(timezone.utc)}
+    )
     db.commit()
 
     return ChatOut(
-        session_id=session.id,
+        session_id=session_id,
         answer=answer,
         citations=citations,
         retrieve_time=round(retrieve_time, 3),
@@ -125,9 +128,10 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="问题不能为空")
 
     session = _get_or_create_session(db, user.id, data.session_id, question)
-    history = _load_history(db, session.id, HISTORY_LIMIT)
+    session_id = session.id  # 提前取出：检索释放连接后 ORM 对象会过期
+    history = _load_history(db, session_id, HISTORY_LIMIT)
 
-    db.add(Message(session_id=session.id, role="user", content=question))
+    db.add(Message(session_id=session_id, role="user", content=question))
     session.updated_at = datetime.now(timezone.utc)
     db.commit()
 
@@ -147,7 +151,7 @@ async def chat_stream(
             yield _sse(
                 "meta",
                 {
-                    "session_id": session.id,
+                    "session_id": session_id,
                     "citations": [c.model_dump() for c in citations],
                     "retrieve_time": retrieve_time,
                 },
@@ -170,7 +174,7 @@ async def chat_stream(
             yield _sse(
                 "meta",
                 {
-                    "session_id": session.id,
+                    "session_id": session_id,
                     "citations": [c.model_dump() for c in citations],
                     "retrieve_time": retrieve_time,
                 },
@@ -198,7 +202,7 @@ async def chat_stream(
         # 持久化回答与引用
         db.add(
             Message(
-                session_id=session.id,
+                session_id=session_id,
                 role="assistant",
                 content=answer,
                 citations=json.dumps(
@@ -206,7 +210,9 @@ async def chat_stream(
                 ),
             )
         )
-        session.updated_at = datetime.now(timezone.utc)
+        db.query(Conversation).filter(Conversation.id == session_id).update(
+            {"updated_at": datetime.now(timezone.utc)}
+        )
         db.commit()
 
         yield _sse("done", {"generate_time": generate_time, "cached": cached is not None})

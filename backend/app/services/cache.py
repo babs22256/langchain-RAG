@@ -27,3 +27,13 @@ def set(key: str, value: dict) -> None:
         if len(_cache) > _MAX_SIZE:
             oldest = min(_cache, key=lambda k: _cache[k][0])
             _cache.pop(oldest, None)
+
+
+def clear() -> None:
+    """知识库发生变化时调用。
+
+    缓存里的答案连同引用片段都基于旧的检索结果，若不整体失效，
+    文档删除后用户仍会看到指向「已删除文档」的幽灵引用。
+    """
+    with _lock:
+        _cache.clear()

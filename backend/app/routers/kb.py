@@ -10,7 +10,7 @@ from ..models.chunk import Chunk
 from ..models.document import KnowledgeDoc
 from ..models.user import User
 from ..schemas.kb import ChunkOut, DocumentOut, KBStats
-from ..services import bm25
+from ..services import bm25, cache
 from ..services.ingestion import SUPPORTED_EXTENSIONS, ingest_document
 from ..services.vector_store import VectorStoreService
 
@@ -85,6 +85,8 @@ def delete_document(doc_id: int, db: Session = Depends(get_db)):
     db.delete(doc)
     db.commit()
     bm25.invalidate()
+    # 缓存的答案可能整段引用了刚被删除的文档，必须一并失效，避免幽灵引用
+    cache.clear()
     return {"detail": "删除成功"}
 
 

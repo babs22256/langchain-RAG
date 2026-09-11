@@ -8,8 +8,15 @@ venv/
 # 环境与本地数据
 .env
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 milvus*.db
-vector_store*
+# 向量数据文件。切勿写成 vector_store*：那会连带忽略
+# backend/app/services/vector_store.py 这个核心源码文件，导致仓库无法运行。
+/backend/vector_store.npy
+/backend/vector_store.json
+/backend/vector_store/
 chroma_db/
 
 # Node

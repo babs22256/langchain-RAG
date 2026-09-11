@@ -32,16 +32,19 @@ langchainRAG/
 │  ├─ app/
 │  │  ├─ main.py     # 入口
 │  │  ├─ config.py   # 配置（读 .env）
-│  │  ├─ database.py # SQLAlchemy + SQLite
+│  │  ├─ database.py # SQLAlchemy + SQLite（WAL + 连接池调优）
 │  │  ├─ models/     # ORM 模型
 │  │  ├─ schemas/    # Pydantic 模型
 │  │  ├─ core/       # 安全与依赖注入
 │  │  ├─ routers/    # auth / kb / chat / session
 │  │  └─ services/   # llm / vector_store / bm25 / ingestion / retriever / rag_chain / cache
+│  ├─ tests/
+│  │  └─ loadtest.py # 并发压力测试工具
 │  ├─ requirements.txt
 │  └─ .env.example
 ├─ frontend/         # Vue3 前端
 ├─ sample_data/      # 样例商品知识库（手机 / 家电）
+├─ docs/             # 压力测试报告
 └─ README.md
 ```
 
@@ -105,6 +108,21 @@ npm run dev
   → 组装 Prompt（含历史对话）
   → DeepSeek 流式生成（SSE）
 ```
+
+## 性能表现（压力测试）
+
+已通过 **100 人同时使用** 的压力测试（12 核 / 单进程 Uvicorn，请求经同步屏障同一瞬间释放，模拟惊群）：
+
+| 场景 | 结果 |
+|---|---|
+| 100 并发真实问答（冷启动） | 总耗时 **11.4s**，P50 6.2s，首字 2.1s，**零错误** |
+| 100 并发问答（缓存命中） | 总耗时 **6.1s**，P50 1.1s，**零错误** |
+| 200 并发（缓存命中） | **零错误**，余量充分 |
+
+压测共定位并修复 5 个真实缺陷：连接池默认配置过小、SQLite 未启用 WAL、**LLM 缓存从不失效（会导致幽灵引用）**、数据库连接被跨网络调用长期持有、模型客户端未复用。
+
+- 完整报告：[`docs/压力测试报告.md`](docs/压力测试报告.md)
+- 复现脚本：[`backend/tests/loadtest.py`](backend/tests/loadtest.py)
 
 ## 注意事项
 
